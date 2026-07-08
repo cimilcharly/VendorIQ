@@ -39,7 +39,14 @@ export default function RegisterPage() {
 
       router.push("/auth/login?message=Registration successful");
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Registration failed");
+      const detail = err.response?.data?.detail;
+      if (Array.isArray(detail)) {
+        setError(detail.map((d: any) => d.msg || JSON.stringify(d)).join(", "));
+      } else if (typeof detail === "object" && detail !== null) {
+        setError(detail.message || detail.msg || JSON.stringify(detail));
+      } else {
+        setError(detail || "Registration failed");
+      }
     } finally {
       setLoading(false);
     }

@@ -11,6 +11,10 @@ class UserCreate(UserBase):
     password: str
     organization_id: Optional[int] = None
 
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     password: Optional[str] = None

@@ -31,7 +31,14 @@ export default function LoginPage() {
 
       router.push("/dashboard");
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Invalid credentials");
+      const detail = err.response?.data?.detail;
+      if (Array.isArray(detail)) {
+        setError(detail.map((d: any) => d.msg || JSON.stringify(d)).join(", "));
+      } else if (typeof detail === "object" && detail !== null) {
+        setError(detail.message || detail.msg || JSON.stringify(detail));
+      } else {
+        setError(detail || "Invalid credentials");
+      }
     } finally {
       setLoading(false);
     }
