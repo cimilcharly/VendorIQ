@@ -1,7 +1,8 @@
 import os
 import sys
 from pydantic_settings import BaseSettings
-from typing import List
+from pydantic import field_validator
+from typing import List, Union
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "VendorIQ"
@@ -17,6 +18,22 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8000"]
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str) and not v.startswith("["):
+            return [i.strip() for i in v.split(",") if i.strip()]
+        elif isinstance(v, str):
+            import json
+            try:
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    return parsed
+                return [str(parsed)]
+            except Exception:
+                return [v]
+        return v
 
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
