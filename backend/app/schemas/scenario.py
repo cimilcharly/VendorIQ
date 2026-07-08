@@ -1,24 +1,36 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Optional
+from typing_extensions import Self
 
 class ScenarioWeights(BaseModel):
     cost: float
     quality: float
     reliability: float
-    delivery: float
+    delivery_time: float
     compliance: float
+    rating: float
+    financial_stability: float
 
-    def validate_weights(self):
-        total = sum([self.cost, self.quality, self.reliability, self.delivery, self.compliance])
+    @model_validator(mode="after")
+    def validate_weights(self) -> Self:
+        total = sum([
+            self.cost,
+            self.quality,
+            self.reliability,
+            self.delivery_time,
+            self.compliance,
+            self.rating,
+            self.financial_stability
+        ])
         if abs(total - 100) > 0.01:
             raise ValueError("Weights must sum to 100")
-        return True
+        return self
 
 class ScenarioBase(BaseModel):
     name: str
     description: Optional[str] = None
-    weights: Dict[str, float]
+    weights: ScenarioWeights
 
 class ScenarioCreate(ScenarioBase):
     pass
@@ -26,7 +38,7 @@ class ScenarioCreate(ScenarioBase):
 class ScenarioUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
-    weights: Optional[Dict[str, float]] = None
+    weights: Optional[ScenarioWeights] = None
 
 class ScenarioResponse(ScenarioBase):
     id: int
@@ -37,3 +49,4 @@ class ScenarioResponse(ScenarioBase):
 
     class Config:
         from_attributes = True
+

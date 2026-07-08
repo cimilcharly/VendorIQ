@@ -2,15 +2,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
-from app.models import Vendor, VendorMetric, User
+from app.models import Vendor, VendorMetric, User, Recommendation
+from app.core.redis import get_redis_client
+from app.core.logging import logger
 from app.schemas.vendor import VendorCreate, VendorUpdate, VendorResponse
 from app.schemas.vendor_metric import VendorMetricCreate, VendorMetricResponse
-from app.core.security import get_current_user
+from app.core.security import get_current_user, check_role
 
 router = APIRouter()
 
 @router.post("/", response_model=VendorResponse)
-def create_vendor(vendor: VendorCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def create_vendor(vendor: VendorCreate, current_user: User = Depends(check_role(["admin", "procurement_manager"])), db: Session = Depends(get_db)):
     db_vendor = Vendor(
         organization_id=current_user.organization_id,
         name=vendor.name,
@@ -41,8 +43,13 @@ def create_vendor(vendor: VendorCreate, current_user: User = Depends(get_current
     return db_vendor
 
 @router.get("/", response_model=List[VendorResponse])
-def list_vendors(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    vendors = db.query(Vendor).filter(Vendor.organization_id == current_user.organization_id).all()
+def list_vendors(
+    skip: int = 0,
+    limit: int = 100,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    vendors = db.query(Vendor).filter(Vendor.organization_id == current_user.organization_id).offset(skip).limit(limit).all()
     return vendors
 
 @router.get("/{vendor_id}", response_model=VendorResponse)
@@ -53,7 +60,7 @@ def get_vendor(vendor_id: int, current_user: User = Depends(get_current_user), d
     return vendor
 
 @router.put("/{vendor_id}", response_model=VendorResponse)
-def update_vendor(vendor_id: int, vendor: VendorUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def update_vendor(vendor_id: int, vendor: VendorUpdate, current_user: User = Depends(check_role(["admin", "procurement_manager"])), db: Session = Depends(get_db)):
     db_vendor = db.query(Vendor).filter(Vendor.id == vendor_id, Vendor.organization_id == current_user.organization_id).first()
     if not db_vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
@@ -65,7 +72,7 @@ def update_vendor(vendor_id: int, vendor: VendorUpdate, current_user: User = Dep
     return db_vendor
 
 @router.delete("/{vendor_id}")
-def delete_vendor(vendor_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def delete_vendor(vendor_id: int, current_user: User = Depends(check_role(["admin", "procurement_manager"])), db: Session = Depends(get_db)):
     db_vendor = db.query(Vendor).filter(Vendor.id == vendor_id, Vendor.organization_id == current_user.organization_id).first()
     if not db_vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
@@ -74,7 +81,7 @@ def delete_vendor(vendor_id: int, current_user: User = Depends(get_current_user)
     return {"message": "Vendor deleted"}
 
 @router.post("/{vendor_id}/metrics", response_model=VendorMetricResponse)
-def add_vendor_metrics(vendor_id: int, metric: VendorMetricCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def add_vendor_metrics(vendor_id: int, metric: VendorMetricCreate, current_user: User = Depends(check_role(["admin", "procurement_manager"])), db: Session = Depends(get_db)):
     vendor = db.query(Vendor).filter(Vendor.id == vendor_id, Vendor.organization_id == current_user.organization_id).first()
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
@@ -83,6 +90,22 @@ def add_vendor_metrics(vendor_id: int, metric: VendorMetricCreate, current_user:
     db.add(db_metric)
     db.commit()
     db.refresh(db_metric)
+
+    # Invalidate all TOPSIS caches and recommendations since metrics have updated
+    try:
+        db.query(Recommendation).delete()
+        db.commit()
+    except Exception as e:
+        logger.error(f"Failed to delete database recommendations: {e}")
+
+    if redis_client := get_redis_client():
+        try:
+            keys = redis_client.keys("topsis_cache:*")
+            if keys:
+                redis_client.delete(*keys)
+        except Exception as e:
+            logger.error(f"Failed to clear Redis TOPSIS caches: {e}")
+
     return db_metric
 
 @router.get("/{vendor_id}/metrics", response_model=List[VendorMetricResponse])

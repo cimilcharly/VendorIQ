@@ -6,29 +6,42 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import axios from "axios";
+import api from "@/lib/api";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { motion } from "framer-motion";
+import { Target, AlertCircle } from "lucide-react";
+import { useAuthStore } from "@/store/authStore";
+
+const loginSchema = z.object({
+  email: z.string().email("Please enter a valid email address"),
+  password: z.string().min(1, "Password is required"),
+});
+
+type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const loginStore = useAuthStore((state) => state.login);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const { register, handleSubmit, formState: { errors } } = useForm<LoginFormValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+    }
+  });
+
+  const onSubmit = async (data: LoginFormValues) => {
     setLoading(true);
     setError("");
 
     try {
-      const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/auth/login`,
-        { email, password }
-      );
-
-      localStorage.setItem("token", response.data.access_token);
-      localStorage.setItem("user_id", response.data.user_id);
-
+      const response = await api.post("/auth/login", data);
+      loginStore(response.data.access_token, response.data.user_id, response.data.role);
       router.push("/dashboard");
     } catch (err: any) {
       const detail = err.response?.data?.detail;
@@ -37,7 +50,7 @@ export default function LoginPage() {
       } else if (typeof detail === "object" && detail !== null) {
         setError(detail.message || detail.msg || JSON.stringify(detail));
       } else {
-        setError(detail || "Invalid credentials");
+        setError(detail || "Invalid email or password");
       }
     } finally {
       setLoading(false);
@@ -45,22 +58,39 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="bg-white p-8 rounded-lg shadow">
-      <h1 className="text-2xl font-bold mb-6 text-center">Sign In to VendorIQ</h1>
+    <motion.div
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      className="bg-white dark:bg-slate-900 p-8 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800"
+    >
+      <div className="flex flex-col items-center mb-6">
+        <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary mb-3">
+          <Target className="w-6 h-6" />
+        </div>
+        <h1 className="text-2xl font-bold tracking-tight">Sign In to VendorIQ</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Enter your credentials below</p>
+      </div>
 
-      {error && <div className="bg-red-50 text-red-600 p-3 rounded mb-4">{error}</div>}
+      {error && (
+        <div className="bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 p-3 rounded-lg border border-red-100 dark:border-red-900/30 flex items-center gap-2 mb-4 text-sm">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div>
-          <Label htmlFor="email">Email</Label>
+          <Label htmlFor="email">Email Address</Label>
           <Input
             id="email"
             type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            className="mt-1"
+            placeholder="name@company.com"
+            {...register("email")}
+            className="mt-1.5"
+            aria-invalid={!!errors.email}
           />
+          {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
         </div>
 
         <div>
@@ -68,24 +98,25 @@ export default function LoginPage() {
           <Input
             id="password"
             type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            className="mt-1"
+            placeholder="••••••••"
+            {...register("password")}
+            className="mt-1.5"
+            aria-invalid={!!errors.password}
           />
+          {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>}
         </div>
 
-        <Button type="submit" className="w-full" disabled={loading}>
+        <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-white shadow" disabled={loading}>
           {loading ? "Signing in..." : "Sign In"}
         </Button>
       </form>
 
-      <p className="text-center text-sm text-slate-600 mt-6">
+      <p className="text-center text-sm text-slate-600 dark:text-slate-400 mt-6">
         Don't have an account?{" "}
-        <Link href="/auth/register" className="text-primary hover:underline">
+        <Link href="/auth/register" className="text-primary font-medium hover:underline">
           Register here
         </Link>
       </p>
-    </div>
+    </motion.div>
   );
 }

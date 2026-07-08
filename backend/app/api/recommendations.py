@@ -21,9 +21,23 @@ def get_scenario_recommendations(scenario_id: int, current_user: User = Depends(
         # Generate recommendations on the fly if not already computed
         vendors = db.query(Vendor).filter(Vendor.organization_id == current_user.organization_id).all()
 
+        from sqlalchemy import func
+        vendor_ids = [v.id for v in vendors]
+        subq = db.query(
+            VendorMetric.vendor_id,
+            func.max(VendorMetric.created_at).label("max_created_at")
+        ).filter(VendorMetric.vendor_id.in_(vendor_ids)).group_by(VendorMetric.vendor_id).subquery()
+
+        latest_metrics = db.query(VendorMetric).join(
+            subq,
+            (VendorMetric.vendor_id == subq.c.vendor_id) & (VendorMetric.created_at == subq.c.max_created_at)
+        ).all()
+
+        metrics_map = {m.vendor_id: m for m in latest_metrics}
+
         vendor_data_list = []
         for vendor in vendors:
-            latest_metric = db.query(VendorMetric).filter(VendorMetric.vendor_id == vendor.id).order_by(VendorMetric.created_at.desc()).first()
+            latest_metric = metrics_map.get(vendor.id)
             if latest_metric:
                 metrics = {
                     "cost": latest_metric.cost,

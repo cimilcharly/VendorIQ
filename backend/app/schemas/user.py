@@ -1,6 +1,7 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from datetime import datetime
 from typing import Optional
+from app.models.user import RoleEnum
 
 class UserBase(BaseModel):
     email: EmailStr
@@ -10,6 +11,20 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str
     organization_id: Optional[int] = None
+    role: Optional[RoleEnum] = RoleEnum.VIEWER
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters long")
+        if not any(c.isupper() for c in v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not any(c.islower() for c in v):
+            raise ValueError("Password must contain at least one lowercase letter")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one digit")
+        return v
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -21,10 +36,11 @@ class UserUpdate(BaseModel):
 
 class UserResponse(UserBase):
     id: int
-    role: str
+    role: RoleEnum
     organization_id: Optional[int]
     is_active: bool
     created_at: datetime
 
     class Config:
         from_attributes = True
+
