@@ -43,7 +43,7 @@ app.include_router(scenarios.router, prefix="/api/scenarios", tags=["Scenarios"]
 app.include_router(recommendations.router, prefix="/api/recommendations", tags=["Recommendations"])
 app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])
 
-from fastapi import Response
+from fastapi import Response, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.database import get_db
