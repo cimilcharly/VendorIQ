@@ -38,6 +38,8 @@
     "zustand": "^4.4.2"
   },
   "devDependencies": {
-    "@types/recharts": "^1.8.29"
+    "@types/recharts": "^1.8.29",
+    "eslint": "^8.56.0",
+    "eslint-config-next": "^14.0.0"
   }
 }
