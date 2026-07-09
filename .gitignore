@@ -61,3 +61,6 @@ postgres_data/
 # IDE
 .idea/
 *.vscode
+
+# Allow frontend lib directory
+!frontend/src/lib/
