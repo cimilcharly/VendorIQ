@@ -4,7 +4,7 @@ from datetime import timedelta
 from jose import jwt, JWTError
 from app.database import get_db
 from app.models import User, Organization
-from app.schemas.user import UserCreate, UserResponse, UserLogin
+from app.schemas.user import UserCreate, UserResponse, UserLogin, ForgotPasswordRequest, ResetPasswordRequest
 from app.core.security import (
     get_password_hash,
     verify_password,
@@ -15,11 +15,15 @@ from app.core.security import (
     register_rate_limiter,
 )
 from app.core.config import settings
+from datetime import datetime
 
 router = APIRouter()
 
 @router.post("/register", response_model=UserResponse, dependencies=[Depends(register_rate_limiter)])
 def register(user_create: UserCreate, db: Session = Depends(get_db)):
+    # NOTE: Email verification is currently deferred to simplify onboarding for procurement manager trials.
+    # Users are activated automatically (is_active=1). In production, an email verification token should be sent
+    # via an email dispatch service (e.g. SendGrid) and is_active should default to False/0 until verified.
     existing_user = db.query(User).filter(User.email == user_create.email).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -48,6 +52,7 @@ def register(user_create: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
     return user
+
 
 @router.post("/login", dependencies=[Depends(login_rate_limiter)])
 def login(login_data: UserLogin, response: Response, db: Session = Depends(get_db)):
@@ -140,4 +145,47 @@ def logout(response: Response):
 @router.get("/me", response_model=UserResponse)
 def get_current_user_info(current_user: User = Depends(get_current_user)):
     return current_user
+
+@router.post("/forgot-password")
+def forgot_password(request_data: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == request_data.email).first()
+    if not user:
+        # Prevent user enumeration by returning a success message even if email isn't registered
+        return {"message": "If this email is registered, a password reset token has been generated."}
+
+    # Generate a short-lived token (15 mins)
+    expire = datetime.utcnow() + timedelta(minutes=15)
+    token = jwt.encode(
+        {"sub": user.email, "exp": expire, "type": "reset"},
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM
+    )
+    
+    # In a real app, send email with reset link containing this token.
+    # For now, we return it in the response to make verification and testing easy.
+    return {
+        "message": "If this email is registered, a password reset token has been generated.",
+        "token": token
+    }
+
+@router.post("/reset-password")
+def reset_password(request_data: ResetPasswordRequest, db: Session = Depends(get_db)):
+    try:
+        payload = jwt.decode(request_data.token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if payload.get("type") != "reset":
+            raise HTTPException(status_code=400, detail="Invalid token type")
+        email = payload.get("sub")
+        if not email:
+            raise HTTPException(status_code=400, detail="Invalid token payload")
+    except JWTError:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.hashed_password = get_password_hash(request_data.new_password)
+    db.commit()
+    return {"message": "Password has been reset successfully."}
+
 

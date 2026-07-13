@@ -80,8 +80,11 @@ export default function ScenariosPage() {
     try {
       const response = await api.get("/scenarios");
       setScenarios(response.data);
-    } catch (error) {
-      console.error("Error fetching scenarios:", error);
+    } catch (err: any) {
+      console.error("Error fetching scenarios:", err);
+      const detail = err.response?.data?.detail;
+      const msg = typeof detail === "object" && detail !== null ? detail.message : (detail || "Failed to load scenarios.");
+      setToast({ message: msg, type: "error" });
     } finally {
       setLoading(false);
     }
@@ -95,9 +98,11 @@ export default function ScenariosPage() {
       reset();
       setShowForm(false);
       fetchScenarios();
-    } catch (error) {
-      setToast({ message: "Failed to create scenario.", type: "error" });
-      console.error("Error creating scenario:", error);
+    } catch (err: any) {
+      console.error("Error creating scenario:", err);
+      const detail = err.response?.data?.detail;
+      const msg = typeof detail === "object" && detail !== null ? detail.message : (detail || "Failed to create scenario.");
+      setToast({ message: msg, type: "error" });
     } finally {
       setSubmitLoading(false);
     }
@@ -108,9 +113,11 @@ export default function ScenariosPage() {
       const response = await api.post(`/scenarios/${scenarioId}/run`, {});
       const topVendor = response.data.rankings[0]?.vendor_id || "None";
       setRunResult({ name: scenarioName, topVendor });
-    } catch (error) {
-      setToast({ message: "Error running scenario calculation.", type: "error" });
-      console.error("Error running scenario:", error);
+    } catch (err: any) {
+      console.error("Error running scenario:", err);
+      const detail = err.response?.data?.detail;
+      const msg = typeof detail === "object" && detail !== null ? detail.message : (detail || "Error running scenario calculation.");
+      setToast({ message: msg, type: "error" });
     }
   };
 
@@ -119,9 +126,11 @@ export default function ScenariosPage() {
       await api.delete(`/scenarios/${scenarioId}`);
       setToast({ message: "Scenario deleted successfully.", type: "info" });
       fetchScenarios();
-    } catch (error) {
-      setToast({ message: "Failed to delete scenario.", type: "error" });
-      console.error("Error deleting scenario:", error);
+    } catch (err: any) {
+      console.error("Error deleting scenario:", err);
+      const detail = err.response?.data?.detail;
+      const msg = typeof detail === "object" && detail !== null ? detail.message : (detail || "Failed to delete scenario.");
+      setToast({ message: msg, type: "error" });
     }
   };
 

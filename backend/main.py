@@ -2,8 +2,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from app.api import auth, vendors, scenarios, recommendations, reports
+from app.api import auth, vendors, scenarios, recommendations, reports, billing
 from app.core.config import settings
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi import Request
 from app.database import engine, Base
 
 from app.core.logging import setup_logging, logger
@@ -42,6 +46,58 @@ app.include_router(vendors.router, prefix="/api/vendors", tags=["Vendors"])
 app.include_router(scenarios.router, prefix="/api/scenarios", tags=["Scenarios"])
 app.include_router(recommendations.router, prefix="/api/recommendations", tags=["Recommendations"])
 app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])
+app.include_router(billing.router, prefix="/api/billing", tags=["Billing"])
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "detail": {
+                "status": "error",
+                "message": exc.detail if isinstance(exc.detail, str) else str(exc.detail),
+                "code": f"ERR_{exc.status_code}",
+                "details": exc.detail if not isinstance(exc.detail, str) else None
+            }
+        }
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = exc.errors()
+    error_messages = []
+    for err in errors:
+        loc = " -> ".join(str(l) for l in err.get("loc", []))
+        msg = err.get("msg", "invalid value")
+        error_messages.append(f"{loc}: {msg}")
+    message = "; ".join(error_messages) if error_messages else "Validation error"
+    
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": {
+                "status": "error",
+                "message": message,
+                "code": "ERR_VALIDATION",
+                "details": errors
+            }
+        }
+    )
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled error occurred")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": {
+                "status": "error",
+                "message": "Internal server error",
+                "code": "ERR_INTERNAL_SERVER_ERROR",
+                "details": str(exc) if os.getenv("ENV", "development").lower() != "production" else None
+            }
+        }
+    )
 
 from fastapi import Response, Depends
 from sqlalchemy.orm import Session

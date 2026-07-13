@@ -3,7 +3,7 @@ import time
 from collections import defaultdict
 from typing import Optional, List
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
@@ -11,8 +11,10 @@ from app.core.config import settings
 from app.models import User
 from app.database import get_db
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login", auto_error=False)
+
+from app.core.redis import get_redis_client
+from app.core.logging import logger
 
 class RateLimiter:
     def __init__(self, requests_limit: int, window_seconds: int):
@@ -22,6 +24,27 @@ class RateLimiter:
 
     def __call__(self, request: Request):
         client_ip = request.client.host if request.client else "unknown"
+        path = request.url.path
+        redis_client = get_redis_client()
+
+        if redis_client is not None:
+            key = f"rate_limit:{path}:{client_ip}"
+            try:
+                current = redis_client.incr(key)
+                if current == 1:
+                    redis_client.expire(key, self.window_seconds)
+                if current > self.requests_limit:
+                    raise HTTPException(
+                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                        detail="Too many requests. Please try again later."
+                    )
+                return
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Redis rate limiting failed, falling back to memory: {e}")
+
+        # Fallback to local memory rate limiting
         now = time.time()
         # Keep only timestamps within window
         self.requests[client_ip] = [t for t in self.requests[client_ip] if now - t < self.window_seconds]
@@ -35,11 +58,16 @@ class RateLimiter:
 login_rate_limiter = RateLimiter(requests_limit=5, window_seconds=60)
 register_rate_limiter = RateLimiter(requests_limit=5, window_seconds=60)
 
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
+    except Exception:
+        return False
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()

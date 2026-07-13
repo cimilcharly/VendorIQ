@@ -5,7 +5,7 @@ import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from "recharts";
-import { ArrowUpRight, TrendingUp, Users, BarChart3, ChevronRight } from "lucide-react";
+import { ArrowUpRight, TrendingUp, Users, BarChart3, ChevronRight, AlertCircle } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function DashboardPage() {
@@ -15,6 +15,7 @@ export default function DashboardPage() {
     completed: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchDashboardData();
@@ -22,14 +23,18 @@ export default function DashboardPage() {
 
   const fetchDashboardData = async () => {
     try {
+      setError(null);
       const statsRes = await api.get("/reports/stats");
       setStats({
         vendors: statsRes.data.vendors,
         scenarios: statsRes.data.scenarios,
         completed: statsRes.data.completed,
       });
-    } catch (error) {
-      console.error("Error fetching dashboard data:", error);
+    } catch (err: any) {
+      console.error("Error fetching dashboard data:", err);
+      const detail = err.response?.data?.detail;
+      const msg = typeof detail === "object" && detail !== null ? detail.message : (detail || "Failed to load dashboard data.");
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -54,6 +59,19 @@ export default function DashboardPage() {
           ))}
         </div>
         <div className="h-80 bg-slate-200 dark:bg-slate-800 rounded-2xl" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 p-8 rounded-2xl border border-red-100 dark:border-red-900/30 max-w-md mx-auto text-center mt-10 shadow-sm">
+        <AlertCircle className="w-12 h-12 mx-auto mb-4 text-red-500" />
+        <h3 className="text-lg font-bold mb-2">Failed to Load Dashboard</h3>
+        <p className="text-sm mb-6 text-slate-500 dark:text-slate-400">{error}</p>
+        <Button onClick={() => { setLoading(true); fetchDashboardData(); }} className="rounded-xl bg-red-600 text-white hover:bg-red-700">
+          Try Again
+        </Button>
       </div>
     );
   }

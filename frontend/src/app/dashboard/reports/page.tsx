@@ -5,7 +5,7 @@ import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { motion } from "framer-motion";
-import { FileText, Download, Award, Calendar, Layers } from "lucide-react";
+import { FileText, Download, Award, Calendar, Layers, AlertTriangle } from "lucide-react";
 
 interface Report {
   scenario_id: number;
@@ -24,6 +24,7 @@ export default function ReportsPage() {
   const [scenarios, setScenarios] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [generateLoading, setGenerateLoading] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchScenarios();
@@ -31,10 +32,14 @@ export default function ReportsPage() {
 
   const fetchScenarios = async () => {
     try {
+      setError(null);
       const response = await api.get("/scenarios");
       setScenarios(response.data);
-    } catch (error) {
-      console.error("Error fetching scenarios:", error);
+    } catch (err: any) {
+      console.error("Error fetching scenarios:", err);
+      const detail = err.response?.data?.detail;
+      const msg = typeof detail === "object" && detail !== null ? detail.message : (detail || "Failed to load scenarios for evaluations.");
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -42,6 +47,7 @@ export default function ReportsPage() {
 
   const generateReport = async (scenarioId: number) => {
     setGenerateLoading(scenarioId);
+    setError(null);
     try {
       const response = await api.get(`/reports/scenario/${scenarioId}/summary`);
       setReports((prevReports) => {
@@ -53,8 +59,11 @@ export default function ReportsPage() {
         }
         return [...prevReports, response.data];
       });
-    } catch (error) {
-      console.error("Error generating report:", error);
+    } catch (err: any) {
+      console.error("Error generating report:", err);
+      const detail = err.response?.data?.detail;
+      const msg = typeof detail === "object" && detail !== null ? detail.message : (detail || "Failed to generate evaluation report.");
+      setError(msg);
     } finally {
       setGenerateLoading(null);
     }
@@ -78,6 +87,16 @@ export default function ReportsPage() {
         <h1 className="text-3xl font-extrabold tracking-tight">Evaluations</h1>
         <p className="text-slate-500 dark:text-slate-400 mt-1">Generate multi-criteria decision reports</p>
       </div>
+
+      {error && (
+        <div className="bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 p-4 rounded-xl border border-red-100 dark:border-red-900/30 flex items-center justify-between gap-2 text-sm">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-red-500" />
+            <span>{error}</span>
+          </div>
+          <button onClick={() => setError(null)} className="font-bold hover:opacity-85 text-lg leading-none">×</button>
+        </div>
+      )}
 
       {scenarios.length > 0 && (
         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800">

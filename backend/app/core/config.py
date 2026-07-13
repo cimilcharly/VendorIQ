@@ -49,11 +49,24 @@ class Settings(BaseSettings):
 settings = Settings()
 
 # Runtime security check
-if settings.SECRET_KEY == "your-secret-key-here-change-in-production":
-    is_prod = os.getenv("ENV", "development").lower() == "production"
-    if is_prod:
+is_prod = os.getenv("ENV", "development").lower() == "production"
+if is_prod:
+    if settings.SECRET_KEY == "your-secret-key-here-change-in-production":
         raise ValueError("CRITICAL SECURITY ERROR: SECRET_KEY must be overridden in production!")
-    else:
+    if settings.DATABASE_URL == "postgresql://user:password@localhost:5432/vendoriq":
+        raise ValueError("CRITICAL SECURITY ERROR: DATABASE_URL must be overridden in production!")
+    if settings.REDIS_URL == "redis://localhost:6379/0":
+        raise ValueError("CRITICAL SECURITY ERROR: REDIS_URL must be overridden in production!")
+    
+    # Assert CORS_ORIGINS contains at least one non-localhost, non-loopback domain in production
+    prod_origins = [
+        o for o in settings.CORS_ORIGINS
+        if "localhost" not in o and "127.0.0.1" not in o
+    ]
+    if not prod_origins:
+        raise ValueError("CRITICAL CORS CONFIG ERROR: CORS_ORIGINS must include a production domain when ENV=production!")
+else:
+    if settings.SECRET_KEY == "your-secret-key-here-change-in-production":
         print(
             "WARNING: Using default weak SECRET_KEY. Please override this in production environment.",
             file=sys.stderr

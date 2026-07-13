@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
-from app.models import Scenario, User, Vendor, VendorMetric, Recommendation
+from app.models import Scenario, User, Vendor, VendorMetric, Recommendation, Organization
 from app.schemas.scenario import ScenarioCreate, ScenarioUpdate, ScenarioResponse
 from app.core.security import get_current_user, check_role
 from app.engine.decision import DecisionEngine, VendorData
@@ -14,6 +14,16 @@ router = APIRouter()
 
 @router.post("/", response_model=ScenarioResponse)
 def create_scenario(scenario: ScenarioCreate, current_user: User = Depends(check_role(["admin", "procurement_manager"])), db: Session = Depends(get_db)):
+    # Enforce free tier scenario limit (max 3 scenarios)
+    org = db.query(Organization).filter(Organization.id == current_user.organization_id).first()
+    if org and org.subscription_plan == "free":
+        scenario_count = db.query(Scenario).filter(Scenario.organization_id == current_user.organization_id).count()
+        if scenario_count >= 3:
+            raise HTTPException(
+                status_code=400,
+                detail="Free tier limit reached. You can only create up to 3 scenarios. Please upgrade to premium for unlimited scenarios."
+            )
+
     db_scenario = Scenario(
         organization_id=current_user.organization_id,
         name=scenario.name,
@@ -25,6 +35,7 @@ def create_scenario(scenario: ScenarioCreate, current_user: User = Depends(check
     db.commit()
     db.refresh(db_scenario)
     return db_scenario
+
 
 @router.get("/", response_model=List[ScenarioResponse])
 def list_scenarios(

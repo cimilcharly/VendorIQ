@@ -23,6 +23,7 @@ export default function VendorsPage() {
   const [loading, setLoading] = useState(true);
   const [formSubmitLoading, setFormSubmitLoading] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     category: "",
@@ -38,10 +39,14 @@ export default function VendorsPage() {
 
   const fetchVendors = async () => {
     try {
+      setError(null);
       const response = await api.get("/vendors");
       setVendors(response.data);
-    } catch (error) {
-      console.error("Error fetching vendors:", error);
+    } catch (err: any) {
+      console.error("Error fetching vendors:", err);
+      const detail = err.response?.data?.detail;
+      const msg = typeof detail === "object" && detail !== null ? detail.message : (detail || "Failed to load vendors.");
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -50,6 +55,7 @@ export default function VendorsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormSubmitLoading(true);
+    setError(null);
 
     try {
       await api.post("/vendors", formData);
@@ -64,19 +70,26 @@ export default function VendorsPage() {
       });
       setShowForm(false);
       fetchVendors();
-    } catch (error) {
-      console.error("Error adding vendor:", error);
+    } catch (err: any) {
+      console.error("Error adding vendor:", err);
+      const detail = err.response?.data?.detail;
+      const msg = typeof detail === "object" && detail !== null ? detail.message : (detail || "Failed to add vendor.");
+      setError(msg);
     } finally {
       setFormSubmitLoading(false);
     }
   };
 
   const handleDelete = async (vendorId: number) => {
+    setError(null);
     try {
       await api.delete(`/vendors/${vendorId}`);
       fetchVendors();
-    } catch (error) {
-      console.error("Error deleting vendor:", error);
+    } catch (err: any) {
+      console.error("Error deleting vendor:", err);
+      const detail = err.response?.data?.detail;
+      const msg = typeof detail === "object" && detail !== null ? detail.message : (detail || "Failed to delete vendor.");
+      setError(msg);
     }
   };
 
@@ -103,6 +116,16 @@ export default function VendorsPage() {
           {showForm ? "Cancel" : <><Plus className="w-4 h-4" /> Add Vendor</>}
         </Button>
       </div>
+
+      {error && (
+        <div className="bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 p-4 rounded-xl border border-red-100 dark:border-red-900/30 flex items-center justify-between gap-2 text-sm">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-red-500" />
+            <span>{error}</span>
+          </div>
+          <button onClick={() => setError(null)} className="font-bold hover:opacity-85 text-lg leading-none">×</button>
+        </div>
+      )}
 
       <AnimatePresence>
         {showForm && (

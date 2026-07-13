@@ -13,7 +13,7 @@ router = APIRouter()
 def ensure_recommendations(scenario_id: int, current_user: User, db: Session):
     recommendations = db.query(Recommendation).filter(Recommendation.scenario_id == scenario_id).order_by(Recommendation.rank).all()
     if not recommendations:
-        scenario = db.query(Scenario).filter(Scenario.id == scenario_id).first()
+        scenario = db.query(Scenario).filter(Scenario.id == scenario_id, Scenario.organization_id == current_user.organization_id).first()
         if not scenario:
             return []
         vendors = db.query(Vendor).filter(Vendor.organization_id == current_user.organization_id).all()
@@ -86,7 +86,7 @@ def get_scenario_summary(scenario_id: int, current_user: User = Depends(get_curr
 
     vendors_detail = []
     for rec in recommendations[:5]:
-        vendor = db.query(Vendor).filter(Vendor.id == rec.vendor_id).first()
+        vendor = db.query(Vendor).filter(Vendor.id == rec.vendor_id, Vendor.organization_id == current_user.organization_id).first()
         if vendor:
             vendors_detail.append({
                 "vendor_id": vendor.id,
@@ -116,7 +116,7 @@ def get_detailed_report(scenario_id: int, current_user: User = Depends(get_curre
 
     vendors_with_metrics = []
     for rec in recommendations:
-        vendor = db.query(Vendor).filter(Vendor.id == rec.vendor_id).first()
+        vendor = db.query(Vendor).filter(Vendor.id == rec.vendor_id, Vendor.organization_id == current_user.organization_id).first()
         if not vendor:
             continue
         metric = db.query(VendorMetric).filter(VendorMetric.vendor_id == rec.vendor_id).order_by(VendorMetric.created_at.desc()).first()

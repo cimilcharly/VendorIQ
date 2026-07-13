@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
-from app.models import Vendor, VendorMetric, User, Recommendation
+from app.models import Vendor, VendorMetric, User, Recommendation, Organization
 from app.core.redis import get_redis_client
 from app.core.logging import logger
 from app.schemas.vendor import VendorCreate, VendorUpdate, VendorResponse
@@ -13,6 +13,16 @@ router = APIRouter()
 
 @router.post("/", response_model=VendorResponse)
 def create_vendor(vendor: VendorCreate, current_user: User = Depends(check_role(["admin", "procurement_manager"])), db: Session = Depends(get_db)):
+    # Enforce free tier vendor limit (max 5 vendors)
+    org = db.query(Organization).filter(Organization.id == current_user.organization_id).first()
+    if org and org.subscription_plan == "free":
+        vendor_count = db.query(Vendor).filter(Vendor.organization_id == current_user.organization_id).count()
+        if vendor_count >= 5:
+            raise HTTPException(
+                status_code=400,
+                detail="Free tier limit reached. You can only create up to 5 vendors. Please upgrade to premium for unlimited vendors."
+            )
+
     db_vendor = Vendor(
         organization_id=current_user.organization_id,
         name=vendor.name,
@@ -25,6 +35,7 @@ def create_vendor(vendor: VendorCreate, current_user: User = Depends(check_role(
     db.add(db_vendor)
     db.commit()
     db.refresh(db_vendor)
+
 
     if vendor.metrics:
         metric = VendorMetric(
@@ -86,7 +97,10 @@ def add_vendor_metrics(vendor_id: int, metric: VendorMetricCreate, current_user:
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
 
-    db_metric = VendorMetric(**metric.dict())
+    metric_data = metric.dict()
+    metric_data["vendor_id"] = vendor_id
+    db_metric = VendorMetric(**metric_data)
+
     db.add(db_metric)
     db.commit()
     db.refresh(db_metric)
